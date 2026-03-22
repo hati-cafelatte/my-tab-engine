@@ -23,11 +23,22 @@
         window.onYouTubeIframeAPIReady = function() {
             player = new YT.Player('player', {
                 videoId: videoId,
-                playerVars: { 'autoplay': 1, 'controls': 0, 'modestbranding': 1, 'rel': 0 },
+                playerVars: { 
+                    'autoplay': 1, 
+                    'controls': 0, 
+                    'modestbranding': 1, 
+                    'rel': 0,
+                    'origin': location.origin 
+                },
                 events: {
                     'onReady': (e) => {
                         e.target.setVolume(initialVol);
-                        if (initialVol === 0) e.target.mute();
+                        // 初回起動時に音が0以外ならミュート解除を試みる
+                        if (initialVol > 0) {
+                            e.target.unMute();
+                        } else {
+                            e.target.mute();
+                        }
                         e.target.playVideo();
                     },
                     'onStateChange': (e) => {
@@ -38,7 +49,6 @@
             });
         };
 
-        // メッセージ受信
         window.addEventListener('message', (event) => {
             if (!player || !player.setVolume) return;
 
@@ -47,9 +57,14 @@
             } else if (event.data === 'play') {
                 player.playVideo();
             } else if (typeof event.data === 'number') {
-                // ★数値が届いたら、それを直接音量として適用する（一番確実）
-                player.setVolume(event.data);
-                if (event.data > 0) player.unMute(); else player.mute();
+                // ★ ここで音量設定とミュート解除をセットで行う
+                const newVol = event.data;
+                player.setVolume(newVol);
+                if (newVol > 0) {
+                    player.unMute(); 
+                } else {
+                    player.mute();
+                }
             }
         });
     </script>
