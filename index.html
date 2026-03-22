@@ -1,10 +1,65 @@
-<style>body,iframe{margin:0;width:100vw;height:100vh;border:none;overflow:hidden;background:#000;}</style>
-<div id="player"></div>
-<script>
-  const urlParams = new URLSearchParams(window.location.search);
-  const videoId = urlParams.get('id');
-  if(videoId) {
-    document.getElementById('player').innerHTML = 
-      `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1&controls=0&mute=1&loop=1&playlist=${videoId}"></iframe>`;
-  }
-</script>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        #player { width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <div id="player"></div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const videoId = urlParams.get('id');
+        const vol = urlParams.get('vol') || 25;
+        const isMuted = (vol == 0) ? 1 : 0;
+
+        // YouTube IFrame APIの読み込み
+        const tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+        let player;
+        window.onYouTubeIframeAPIReady = function() {
+            player = new YT.Player('player', {
+                videoId: videoId,
+                playerVars: {
+                    'autoplay': 1,
+                    'controls': 0,
+                    'mute': isMuted,
+                    'loop': 1,
+                    'playlist': videoId,
+                    'modestbranding': 1,
+                    'rel': 0,
+                    'iv_load_policy': 3
+                },
+                events: {
+                    'onReady': onPlayerReady,
+                    'onStateChange': onPlayerStateChange,
+                    'onError': onPlayerError
+                }
+            });
+        };
+
+        function onPlayerReady(event) {
+            event.target.playVideo();
+        }
+
+        function onPlayerStateChange(event) {
+            // 再生終了(0)を親(拡張機能)に通知
+            if (event.data === YT.PlayerState.ENDED) {
+                window.parent.postMessage('videoEnded', '*');
+            }
+        }
+
+        function onPlayerError(event) {
+            // 153エラーや埋め込み拒否などのエラーを親に通知して次へ飛ばす
+            console.log("YouTube Error:", event.data);
+            window.parent.postMessage('videoError', '*');
+        }
+    </script>
+</body>
+</html>
