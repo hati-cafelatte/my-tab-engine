@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        /* pointer-events: none; でクリックを無効化し、勝手な操作を防ぐ */
         #player { width: 100vw; height: 100vh; pointer-events: none; }
     </style>
 </head>
@@ -19,15 +20,12 @@
         const firstScriptTag = document.getElementsByTagName('script')[0];
         firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
+        let player;
         window.onYouTubeIframeAPIReady = function() {
-            new YT.Player('player', {
+            player = new YT.Player('player', {
                 videoId: videoId,
                 playerVars: { 
-                    'autoplay': 1, 
-                    'controls': 0, 
-                    'modestbranding': 1, 
-                    'rel': 0,
-                    'iv_load_policy': 3,
+                    'autoplay': 1, 'controls': 0, 'modestbranding': 1, 'rel': 0, 'iv_load_policy': 3,
                     'mute': (vol === 0 ? 1 : 0)
                 },
                 events: {
@@ -37,13 +35,24 @@
                         e.target.playVideo();
                     },
                     'onStateChange': (e) => {
-                        // 終了(0)を拡張機能へ通知
+                        // 0 は動画終了の合図
                         if (e.data === 0) window.parent.postMessage('videoEnded', '*');
-                    },
-                    'onError': () => window.parent.postMessage('videoError', '*')
+                    }
                 }
             });
         };
+
+       
+        window.addEventListener('message', (event) => {
+            // playerが準備できていない時は無視
+            if (!player || typeof player.pauseVideo !== 'function') return;
+
+            if (event.data === 'pause') {
+                player.pauseVideo();
+            } else if (event.data === 'play') {
+                player.playVideo();
+            }
+        });
     </script>
 </body>
 </html>
