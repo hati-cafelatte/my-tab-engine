@@ -1,0 +1,10 @@
+<style>body,iframe{margin:0;width:100vw;height:100vh;border:none;overflow:hidden;background:#000;}</style>
+<div id="player"></div>
+<script>
+  const urlParams = new URLSearchParams(window.location.search);
+  const videoId = urlParams.get('id');
+  if(videoId) {
+    document.getElementById('player').innerHTML = 
+      `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1&controls=0&mute=1&loop=1&playlist=${videoId}"></iframe>`;
+  }
+</script>
