@@ -2,6 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
+    <title>YouTube Player Hub</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
         #player { width: 100vw; height: 100vh; }
@@ -13,9 +14,9 @@
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const videoId = urlParams.get('id');
-        const vol = urlParams.get('vol') || 25;
-        const isMuted = (vol == 0) ? 1 : 0;
+        const initialVol = urlParams.get('vol') || 25;
 
+        
         const tag = document.createElement('script');
         tag.src = "https://www.youtube.com/iframe_api";
         const firstScriptTag = document.getElementsByTagName('script')[0];
@@ -28,14 +29,17 @@
                 playerVars: {
                     'autoplay': 1,
                     'controls': 0,
-                    'mute': isMuted,
+                    'mute': (initialVol == 0 ? 1 : 0),
                     'modestbranding': 1,
                     'rel': 0,
-                    'iv_load_policy': 3,
+                    'iv_load_policy': 3
                     
                 },
                 events: {
-                    'onReady': (e) => e.target.playVideo(),
+                    'onReady': (e) => {
+                        e.target.setVolume(initialVol);
+                        e.target.playVideo();
+                    },
                     'onStateChange': (e) => {
                         
                         if (e.data === YT.PlayerState.ENDED) {
@@ -47,12 +51,21 @@
             });
         };
 
+        
         window.addEventListener('message', (event) => {
-            if (!player || !player.pauseVideo) return;
+            if (!player) return;
+
+            
             if (event.data === 'pause') {
                 player.pauseVideo();
             } else if (event.data === 'play') {
                 player.playVideo();
+            } 
+            
+            else if (event.data.type === 'setVolume') {
+                const newVol = event.data.value;
+                player.setVolume(newVol);
+                if (newVol > 0) player.unMute(); else player.mute();
             }
         });
     </script>
