@@ -2,7 +2,6 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>YouTube Player Hub</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
         #player { width: 100vw; height: 100vh; }
@@ -10,13 +9,11 @@
 </head>
 <body>
     <div id="player"></div>
-
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const videoId = urlParams.get('id');
-        const initialVol = urlParams.get('vol') || 25;
+        const initialVol = parseInt(urlParams.get('vol')) || 25;
 
-        
         const tag = document.createElement('script');
         tag.src = "https://www.youtube.com/iframe_api";
         const firstScriptTag = document.getElementsByTagName('script')[0];
@@ -26,46 +23,33 @@
         window.onYouTubeIframeAPIReady = function() {
             player = new YT.Player('player', {
                 videoId: videoId,
-                playerVars: {
-                    'autoplay': 1,
-                    'controls': 0,
-                    'mute': (initialVol == 0 ? 1 : 0),
-                    'modestbranding': 1,
-                    'rel': 0,
-                    'iv_load_policy': 3
-                    
-                },
+                playerVars: { 'autoplay': 1, 'controls': 0, 'modestbranding': 1, 'rel': 0 },
                 events: {
                     'onReady': (e) => {
                         e.target.setVolume(initialVol);
+                        if (initialVol === 0) e.target.mute();
                         e.target.playVideo();
                     },
                     'onStateChange': (e) => {
-                        
-                        if (e.data === YT.PlayerState.ENDED) {
-                            window.parent.postMessage('videoEnded', '*');
-                        }
+                        if (e.data === YT.PlayerState.ENDED) window.parent.postMessage('videoEnded', '*');
                     },
                     'onError': () => window.parent.postMessage('videoError', '*')
                 }
             });
         };
 
-        
+        // メッセージ受信
         window.addEventListener('message', (event) => {
-            if (!player) return;
+            if (!player || !player.setVolume) return;
 
-            
             if (event.data === 'pause') {
                 player.pauseVideo();
             } else if (event.data === 'play') {
                 player.playVideo();
-            } 
-            
-            else if (event.data.type === 'setVolume') {
-                const newVol = event.data.value;
-                player.setVolume(newVol);
-                if (newVol > 0) player.unMute(); else player.mute();
+            } else if (typeof event.data === 'number') {
+                // ★数値が届いたら、それを直接音量として適用する（一番確実）
+                player.setVolume(event.data);
+                if (event.data > 0) player.unMute(); else player.mute();
             }
         });
     </script>
