@@ -29,23 +29,24 @@
                     'autoplay': 1,
                     'controls': 0,
                     'mute': isMuted,
-                    'loop': 1,
-                    'playlist': videoId,
                     'modestbranding': 1,
                     'rel': 0,
-                    'iv_load_policy': 3
+                    'iv_load_policy': 3,
+                    
                 },
                 events: {
                     'onReady': (e) => e.target.playVideo(),
                     'onStateChange': (e) => {
-                        if (e.data === YT.PlayerState.ENDED) window.parent.postMessage('videoEnded', '*');
+                        
+                        if (e.data === YT.PlayerState.ENDED) {
+                            window.parent.postMessage('videoEnded', '*');
+                        }
                     },
-                    'onError': () => window.parent.postMessage('videoError', '*埋め込み拒否')
+                    'onError': () => window.parent.postMessage('videoError', '*')
                 }
             });
         };
 
-        
         window.addEventListener('message', (event) => {
             if (!player || !player.pauseVideo) return;
             if (event.data === 'pause') {
