@@ -1,58 +1,116 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
-        /* pointer-events: none; でクリックを無効化し、勝手な操作を防ぐ */
-        #player { width: 100vw; height: 100vh; pointer-events: none; }
-    </style>
+  <meta charset="UTF-8">
+  <style>
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+    iframe { width: 100vw; height: 100vh; border: none; display: block; }
+    #msg {
+      display: none; color: #aaa; position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%,-50%); font-size: 13px; font-family: sans-serif; text-align: center;
+    }
+  </style>
 </head>
 <body>
-    <div id="player"></div>
-    <script>
-        const urlParams = new URLSearchParams(window.location.search);
-        const videoId = urlParams.get('id');
-        const vol = parseInt(urlParams.get('vol')) || 25;
+  <div id="msg">読み込み中...</div>
+  <script>
+    const params  = new URLSearchParams(window.location.search);
+    const videoId = params.get('id');
+    const vol     = Math.min(100, Math.max(0, parseInt(params.get('vol')) || 25));
 
-        const tag = document.createElement('script');
-        tag.src = "https://www.youtube.com/iframe_api";
-        const firstScriptTag = document.getElementsByTagName('script')[0];
-        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    // Invidious インスタンス一覧（落ちていたら次へ）
+    const INSTANCES = [
+      'https://yewtu.be',
+      'https://inv.nadeko.net',
+      'https://iv.datura.network',
+      'https://invidious.privacydev.net',
+      'https://invidious.nerdvpn.de',
+    ];
 
-        let player;
-        window.onYouTubeIframeAPIReady = function() {
-            player = new YT.Player('player', {
-                videoId: videoId,
-                playerVars: { 
-                    'autoplay': 1, 'controls': 0, 'modestbranding': 1, 'rel': 0, 'iv_load_policy': 3,
-                    'mute': (vol === 0 ? 1 : 0)
-                },
-                events: {
-                    'onReady': (e) => {
-                        e.target.setVolume(vol);
-                        if (vol > 0) e.target.unMute();
-                        e.target.playVideo();
-                    },
-                    'onStateChange': (e) => {
-                        // 0 は動画終了の合図
-                        if (e.data === 0) window.parent.postMessage('videoEnded', '*');
-                    }
-                }
-            });
-        };
+    let currentInstance = 0;
+    let iframe = null;
+    let firstLoad = true;
+    // 動画終了の最大待ち時間（10分）。これを超えたら強制的に次の曲へ
+    const MAX_MS = 10 * 60 * 1000;
+    let maxTimer = null;
 
-       
-        window.addEventListener('message', (event) => {
-            // playerが準備できていない時は無視
-            if (!player || typeof player.pauseVideo !== 'function') return;
+    function buildUrl(instance) {
+      const p = new URLSearchParams({
+        autoplay: '1',
+        listen:   '0',   // 映像も表示する
+        local:    '1',   // Invidiousサーバー経由でプロキシ（広告なし）
+        muted:    vol === 0 ? '1' : '0',
+      });
+      return `${instance}/embed/${videoId}?${p}`;
+    }
 
-            if (event.data === 'pause') {
-                player.pauseVideo();
-            } else if (event.data === 'play') {
-                player.playVideo();
-            }
-        });
-    </script>
+    function notifyEnded() {
+      clearTimeout(maxTimer);
+      window.parent.postMessage('videoEnded', '*');
+    }
+
+    function tryNext() {
+      clearTimeout(maxTimer);
+      currentInstance++;
+      if (currentInstance >= INSTANCES.length) {
+        // 全インスタンス失敗
+        window.parent.postMessage('videoError', '*');
+        return;
+      }
+      loadInstance(currentInstance);
+    }
+
+    function loadInstance(idx) {
+      firstLoad = true;
+      clearTimeout(maxTimer);
+
+      if (iframe) iframe.remove();
+
+      iframe = document.createElement('iframe');
+      iframe.allow = 'autoplay; fullscreen';
+      iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups';
+      iframe.src = buildUrl(INSTANCES[idx]);
+
+      // 1回目のload = プレイヤーが表示された
+      // 2回目以降のload = 動画終了後にInvidiousが別ページへ遷移した = 次の曲へ
+      iframe.addEventListener('load', () => {
+        if (firstLoad) {
+          firstLoad = false;
+          document.getElementById('msg').style.display = 'none';
+          // 最大タイマーをセット
+          maxTimer = setTimeout(notifyEnded, MAX_MS);
+          console.log(`[index.html] 再生開始: ${INSTANCES[idx]}`);
+        } else {
+          // 2回目のload = 動画が終わってページ遷移した
+          console.log('[index.html] iframe再読み込み検知 → videoEnded');
+          notifyEnded();
+        }
+      });
+
+      // iframeが全インスタンスで読み込めなかった場合のタイムアウト
+      const loadTimeout = setTimeout(() => {
+        if (firstLoad) {
+          console.warn(`[index.html] ${INSTANCES[idx]} タイムアウト → 次へ`);
+          tryNext();
+        }
+      }, 10000);
+
+      iframe.addEventListener('load', () => clearTimeout(loadTimeout), { once: true });
+
+      document.body.appendChild(iframe);
+    }
+
+    if (!videoId) {
+      window.parent.postMessage('videoError', '*');
+    } else {
+      document.getElementById('msg').style.display = 'block';
+      loadInstance(0);
+    }
+
+    // pause / play メッセージ（postMessageは届かないがエラーにならないよう残す）
+    window.addEventListener('message', (event) => {
+      // Invidious embed は外部postMessageを受け付けないため何もしない
+    });
+  </script>
 </body>
 </html>
