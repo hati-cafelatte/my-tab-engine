@@ -1,129 +1,58 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <style>
-    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
-    video { width: 100vw; height: 100vh; object-fit: cover; display: block; }
-    #msg {
-      display: none; color: #aaa; position: absolute; top: 50%; left: 50%;
-      transform: translate(-50%, -50%); font-size: 13px; font-family: sans-serif; text-align: center;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        /* pointer-events: none; でクリックを無効化し、勝手な操作を防ぐ */
+        #player { width: 100vw; height: 100vh; pointer-events: none; }
+    </style>
 </head>
 <body>
-  <video id="v" autoplay playsinline></video>
-  <div id="msg"></div>
-  <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    const videoId   = urlParams.get('id');
-    const vol       = Math.min(100, Math.max(0, parseInt(urlParams.get('vol')) || 25));
-    const video     = document.getElementById('v');
-    const msg       = document.getElementById('msg');
+    <div id="player"></div>
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const videoId = urlParams.get('id');
+        const vol = parseInt(urlParams.get('vol')) || 25;
 
-    // Invidious インスタンス一覧（上から順に試す）
-    // 落ちているインスタンスがあっても次へフォールバック
-    const INSTANCES = [
-      'https://yewtu.be',
-      'https://inv.nadeko.net',
-      'https://invidious.nerdvpn.de',
-      'https://iv.datura.network',
-      'https://invidious.privacydev.net',
-    ];
+        const tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
-    function showMsg(text) {
-      msg.style.display = 'block';
-      msg.textContent   = text;
-    }
+        let player;
+        window.onYouTubeIframeAPIReady = function() {
+            player = new YT.Player('player', {
+                videoId: videoId,
+                playerVars: { 
+                    'autoplay': 1, 'controls': 0, 'modestbranding': 1, 'rel': 0, 'iv_load_policy': 3,
+                    'mute': (vol === 0 ? 1 : 0)
+                },
+                events: {
+                    'onReady': (e) => {
+                        e.target.setVolume(vol);
+                        if (vol > 0) e.target.unMute();
+                        e.target.playVideo();
+                    },
+                    'onStateChange': (e) => {
+                        // 0 は動画終了の合図
+                        if (e.data === 0) window.parent.postMessage('videoEnded', '*');
+                    }
+                }
+            });
+        };
 
-    /**
-     * Invidious API でストリーム URL を取得する。
-     * /latest_version?id=...&itag=...&local=true
-     * → Invidious がプロキシして返す（CORS OK・広告なし）
-     */
-    async function fetchStreamUrl(instance, id) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 6000);
-      try {
-        const res  = await fetch(
-          `${instance}/api/v1/videos/${id}?fields=formatStreams`,
-          { signal: controller.signal }
-        );
-        clearTimeout(timer);
-        if (!res.ok) return null;
+       
+        window.addEventListener('message', (event) => {
+            // playerが準備できていない時は無視
+            if (!player || typeof player.pauseVideo !== 'function') return;
 
-        const data    = await res.json();
-        const streams = data.formatStreams || [];
-
-        // mp4 の中で最も低い itag（360p=18 が理想）を優先
-        const stream =
-          streams.find(s => s.itag === '18') ||       // 360p mp4
-          streams.find(s => s.container === 'mp4') ||
-          streams[0];
-
-        if (!stream) return null;
-
-        // Invidious プロキシ経由で返す → CORS 問題を回避
-        return `${instance}/latest_version?id=${id}&itag=${stream.itag}&local=true`;
-      } catch {
-        clearTimeout(timer);
-        return null;
-      }
-    }
-
-    async function load() {
-      if (!videoId) { showMsg('動画IDが指定されていません'); return; }
-
-      showMsg('読み込み中...');
-
-      let streamUrl = null;
-      for (const instance of INSTANCES) {
-        streamUrl = await fetchStreamUrl(instance, videoId);
-        if (streamUrl) {
-          console.log(`[index.html] ストリーム取得: ${instance}`);
-          break;
-        }
-        console.warn(`[index.html] ${instance} 失敗、次へ`);
-      }
-
-      if (!streamUrl) {
-        console.error('[index.html] 全インスタンス失敗 → videoError');
-        window.parent.postMessage('videoError', '*');
-        return;
-      }
-
-      msg.style.display   = 'none';
-      video.src           = streamUrl;
-      video.volume        = vol / 100;
-      video.muted         = (vol === 0);
-
-      video.play().catch(() => {
-        // 自動再生ポリシーでブロックされた場合はミュートで再試行
-        video.muted = true;
-        video.play().catch(() => {
-          window.parent.postMessage('videoError', '*');
+            if (event.data === 'pause') {
+                player.pauseVideo();
+            } else if (event.data === 'play') {
+                player.playVideo();
+            }
         });
-      });
-    }
-
-    // 再生終了 → 次の曲へ
-    video.addEventListener('ended', () => {
-      window.parent.postMessage('videoEnded', '*');
-    });
-
-    // 致命的なエラー → スキップ
-    video.addEventListener('error', () => {
-      console.error('[index.html] video error');
-      window.parent.postMessage('videoError', '*');
-    });
-
-    // popup / newtab からの一時停止・再開
-    window.addEventListener('message', (event) => {
-      if (event.data === 'pause') video.pause();
-      else if (event.data === 'play') video.play().catch(() => {});
-    });
-
-    load();
-  </script>
+    </script>
 </body>
 </html>
