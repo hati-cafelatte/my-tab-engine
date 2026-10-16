@@ -20,25 +20,40 @@
         firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
         let player;
+
+        function clearCaptions() {
+            try {
+                player.setOption('captions', 'track', {});
+                player.unloadModule('captions');
+            } catch (e) {}
+        }
+
         window.onYouTubeIframeAPIReady = function() {
             player = new YT.Player('player', {
                 videoId: videoId,
                 playerVars: {
                     'autoplay': 1, 'controls': 0, 'modestbranding': 1,
                     'rel': 0, 'iv_load_policy': 3,
+                    'cc_load_policy': 0,
                     'mute': (vol === 0 ? 1 : 0),
-                    'cc_load_policy': 0,  // 字幕オフ
                 },
                 events: {
                     'onReady': (e) => {
                         e.target.setVolume(vol);
                         if (vol > 0) e.target.unMute();
                         e.target.playVideo();
+                        clearCaptions();
                     },
                     'onStateChange': (e) => {
+                        if (e.data === YT.PlayerState.PLAYING) clearCaptions();
                         if (e.data === 0) window.parent.postMessage('videoEnded', '*');
                     },
-                    'onError': (e) => {
+                    'onApiChange': (e) => {
+                        // 字幕モジュールが読み込まれた瞬間に即アンロード
+                        const options = player.getOptions();
+                        if (options.indexOf('captions') !== -1) clearCaptions();
+                    },
+                    'onError': () => {
                         window.parent.postMessage('videoError', '*');
                     }
                 }
